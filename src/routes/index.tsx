@@ -25,11 +25,9 @@ import {
   FileText,
   Tag,
   CreditCard,
-  Sparkles,
   Info,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import ReactMarkdown from "react-markdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Popover,
@@ -155,53 +153,13 @@ function SectionTitle({
 const FILTERS = ["Hoje", "Mensal", "Anual"] as const;
 type Filter = (typeof FILTERS)[number];
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 function Dashboard() {
   const [filter, setFilter] = useState<Filter>("Mensal");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
-  const [selectedTxExplanation, setSelectedTxExplanation] = useState<string | null>(null);
-  const [explaining, setExplaining] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const explainTransaction = async (tx: Transaction) => {
-    try {
-      setExplaining(true);
-      setSelectedTxExplanation(null);
-
-      const prompt = `Analise este gasto do Conselho Federal de Nutrição (CFN) e explique de forma simples e direta o que ele representa. 
-      Se o valor parecer anormal (muito alto), mencione que pode ser um erro de sistema ou um gasto consolidado de grupo.
-      
-      DETALHES DO GASTO:
-      Favorecido: ${tx.favorecido}
-      Cargo: ${tx.cargo}
-      Valor: ${BRL(tx.valor)}
-      Categoria: ${tx.categoria}
-      Descrição: ${tx.descricao}
-      Origem: ${tx.origem}
-      Roteiro: ${tx.origemDestino || "N/A"}
-      
-      DADOS BRUTOS DO BANCO:
-      ${JSON.stringify(tx.raw, null, 2)}
-      
-      Responda em português brasileiro, mantendo um tom de auditoria técnica mas acessível. Use Markdown.`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-
-      setSelectedTxExplanation(response.text || "Não foi possível gerar uma explicação no momento.");
-    } catch (error) {
-      console.error("Erro ao explicar gasto:", error);
-      setSelectedTxExplanation("Erro ao conectar com a Inteligência de Auditoria.");
-    } finally {
-      setExplaining(false);
-    }
-  };
 
   const fetchRealData = async () => {
     try {
@@ -841,7 +799,6 @@ function Dashboard() {
           onOpenChange={(open) => {
             if (!open) {
               setSelectedTx(null);
-              setSelectedTxExplanation(null);
               setShowRaw(false);
             }
           }}
@@ -991,53 +948,6 @@ function Dashboard() {
                             {BRL(selectedTx.valor)}
                           </span>
                         </div>
-                      </div>
-                    </div>
-
-                    {/* AI ANALYSIS SECTION */}
-                    <div className="group relative">
-                      <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 opacity-0 blur transition duration-1000 group-hover:opacity-100" />
-                      <div className="relative space-y-4 rounded-2xl border border-primary/20 bg-primary/[0.02] p-6 backdrop-blur-sm">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Sparkles className="h-4 w-4 animate-pulse text-primary" />
-                            <h3 className="font-display text-sm font-black tracking-tighter text-primary uppercase">
-                              Análise da Auditoria Social
-                            </h3>
-                          </div>
-                          {!selectedTxExplanation && (
-                            <Button
-                              onClick={() => explainTransaction(selectedTx)}
-                              disabled={explaining}
-                              size="sm"
-                              className="h-8 rounded-lg bg-primary/10 font-mono text-[10px] font-bold text-primary transition-all hover:bg-primary hover:text-white uppercase"
-                            >
-                              {explaining ? (
-                                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                              ) : (
-                                <Activity className="mr-2 h-3 w-3" />
-                              )}
-                              {explaining ? "Auditando..." : "Explicar Gasto"}
-                            </Button>
-                          )}
-                        </div>
-
-                        {selectedTxExplanation ? (
-                          <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="prose prose-invert prose-xs font-sans max-w-none text-xs leading-relaxed text-foreground/80"
-                          >
-                            <ReactMarkdown>{selectedTxExplanation}</ReactMarkdown>
-                          </motion.div>
-                        ) : (
-                          <p className="text-[10px] italic leading-relaxed text-muted-foreground">
-                            Clique no botão acima para que nossa IA fiscal
-                            analise os pormenores desta movimentação e
-                            identifique possíveis anomalias ou justificativas
-                            legais.
-                          </p>
-                        )}
                       </div>
                     </div>
                   </>
