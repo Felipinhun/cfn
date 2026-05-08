@@ -171,13 +171,12 @@ function Dashboard() {
 
       // 3. Mapear e Unificar
       const mappedPassagens: Transaction[] = (passagens || []).map((p: any) => ({
-        id: p.Id || Math.random(),
-        // Tenta extrair a primeira data da string "27/04/2026 ... a ... 30/04/2026"
+        id: p.Id || p.IdProcesso || Math.random(),
         data: p.DataIdaEVoltaFormatada?.split(" ")[0]?.split("/").reverse().join("-") || new Date().toISOString(),
         cargo: p.TipoPassageiro || "Não Informado",
         categoria: `Passagem: ${p.CiaAerea || "Aérea"}`,
         favorecido: p.NomePassageiro || "Anônimo",
-        valor: parseFloat(String(p.ValorTotal || 0).replace(",", ".")),
+        valor: typeof p.ValorTotal === 'number' ? p.ValorTotal : parseFloat(String(p.ValorTotal || 0).replace(".", "").replace(",", ".")),
         descricao: p.NomeEventoFormatado || "Viagem institucional",
         origem: `Processo: ${p.CodigoProcesso || "N/A"}`
       }));
@@ -188,7 +187,7 @@ function Dashboard() {
         cargo: d.TipoPassageiro || "Colaborador",
         categoria: "Deslocamento / Diária",
         favorecido: d.NomePassageiro || "Anônimo",
-        valor: parseFloat(String(d.ValorTotalDespesas || 0).replace(",", ".")),
+        valor: typeof d.ValorTotalDespesas === 'number' ? d.ValorTotalDespesas : parseFloat(String(d.ValorTotalDespesas || 0).replace(".", "").replace(",", ".")),
         descricao: d.NomeDespesaPadrao || "Despesas de deslocamento",
         origem: `Evento: ${d.NomeEventoFormatado || "N/A"}`
       }));
