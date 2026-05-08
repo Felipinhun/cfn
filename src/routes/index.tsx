@@ -298,11 +298,11 @@ function Dashboard() {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="hidden items-center gap-3 rounded-2xl border border-border/50 bg-card/40 px-4 py-2 backdrop-blur-sm md:flex"
+            className="hidden items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-2 backdrop-blur-sm md:flex shadow-[0_0_15px_rgba(var(--primary),0.1)]"
           >
             <Calendar className="h-4 w-4 text-primary" />
-            <span className="font-mono text-[10px] font-bold tracking-tighter text-muted-foreground uppercase">
-              Relatório Gerado em {new Date().toLocaleDateString("pt-BR")}
+            <span className="font-mono text-[10px] font-bold tracking-tighter text-primary uppercase">
+              Última atualização: {new Date().toLocaleDateString("pt-BR")}
             </span>
           </motion.div>
         </div>
@@ -340,11 +340,17 @@ function Dashboard() {
                 <div className="h-10 w-px bg-border/40" />
                 <div className="space-y-1">
                   <p className="font-mono text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
-                    Status Auditado
+                    Fonte dos Dados
                   </p>
-                  <p className="flex items-center gap-2 text-xl font-bold tracking-tighter text-emerald-500">
-                    NORMAL
-                  </p>
+                  <a 
+                    href="https://cfn-br.implanta.net.br/portaltransparencia/#publico/inicio" 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="flex items-center gap-2 text-sm font-bold tracking-tighter text-primary hover:underline"
+                  >
+                    Portal Transparência CFN
+                    <ArrowUpRight className="h-3 w-3" />
+                  </a>
                 </div>
               </div>
             </div>
