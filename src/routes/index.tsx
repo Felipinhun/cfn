@@ -47,6 +47,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { type Transaction } from "@/lib/transactions";
 import { useRealTransactions } from "../hooks/useRealTransactions";
+import { cn } from "@/lib/utils";
+import { BottomNav } from "@/components/BottomNav";
+import { CommentsSection } from "@/components/CommentsSection";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
