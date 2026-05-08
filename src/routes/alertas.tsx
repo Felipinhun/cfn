@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Bell, Lightbulb, TrendingUp, TrendingDown, ShieldCheck } from "lucide-react";
+import { Bell, Lightbulb, TrendingUp, TrendingDown, ShieldCheck, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { alerts } from "@/lib/alerts";
+import { useRealTransactions } from "@/hooks/useRealTransactions";
 import { BottomNav } from "@/components/BottomNav";
 import { cn } from "@/lib/utils";
+import { useMemo } from "react";
 
 export const Route = createFileRoute("/alertas")({
   component: AlertsPage,
@@ -31,7 +32,7 @@ function MiniBars({
   atual: number;
   alta: boolean;
 }) {
-  const max = Math.max(anterior, atual);
+  const max = Math.max(anterior, atual, 1);
   const hPrev = (anterior / max) * 100;
   const hCurr = (atual / max) * 100;
   const currColor = alta
@@ -61,6 +62,68 @@ function MiniBars({
 }
 
 function AlertsPage() {
+  const { allTransactions, loading } = useRealTransactions();
+
+  const generatedAlerts = useMemo(() => {
+    if (allTransactions.length === 0) return [];
+
+    const categories = Array.from(new Set(allTransactions.map(t => t.categoria.startsWith("Passagem") ? "Passagens Aéreas" : t.categoria)));
+    
+    // Sort transactions by date desc
+    const sorted = [...allTransactions].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+    const newestDate = new Date(sorted[0].data);
+    const currMonth = newestDate.getMonth();
+    const currYear = newestDate.getFullYear();
+    
+    const prevMonth = currMonth === 0 ? 11 : currMonth - 1;
+    const prevYear = currMonth === 0 ? currYear - 1 : currYear;
+
+    const alertsList = categories.map(cat => {
+      const items = allTransactions.filter(t => (t.categoria.startsWith("Passagem") ? "Passagens Aéreas" : t.categoria) === cat);
+      
+      const valAtual = items
+        .filter(t => {
+          const d = new Date(t.data);
+          return d.getMonth() === currMonth && d.getFullYear() === currYear;
+        })
+        .reduce((s, t) => s + t.valor, 0);
+
+      const valAnterior = items
+        .filter(t => {
+          const d = new Date(t.data);
+          return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+        })
+        .reduce((s, t) => s + t.valor, 0);
+
+      if (valAtual === 0 && valAnterior === 0) return null;
+
+      const diff = valAtual - valAnterior;
+      const pct = valAnterior > 0 ? (diff / valAnterior) * 100 : 100;
+      const tendencia = diff >= 0 ? "alta" : "baixa";
+
+      if (Math.abs(pct) < 5 && valAtual > 0) return null; // Ignore small changes
+
+      let mensagem = "";
+      if (tendencia === "alta") {
+        mensagem = `Aumento expressivo detectado em ${cat}. Recomendado verificar dotação orçamentária.`;
+      } else {
+        mensagem = `Redução estratégica ou sazonal observada na categoria ${cat} em relação ao mês anterior.`;
+      }
+
+      return {
+        id: cat,
+        categoria: cat,
+        tendencia,
+        variacao_percentual: `${diff >= 0 ? "+" : ""}${pct.toFixed(1)}%`,
+        mensagem,
+        valor_anterior: valAnterior,
+        valor_atual: valAtual,
+      };
+    }).filter(Boolean);
+
+    return alertsList;
+  }, [allTransactions]);
+
   return (
     <div className="min-h-screen bg-background text-foreground pb-28 animate-in fade-in duration-300">
       <header className="border-b border-border bg-card/60 backdrop-blur">
@@ -85,66 +148,78 @@ function AlertsPage() {
             <Lightbulb className="h-5 w-5" />
           </div>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Estes alertas mostram variações de orçamento. Um aumento não
-            significa irregularidade, mas indica onde a gestão está focando os
-            recursos no momento.
+            Estes alertas são gerados automaticamente comparando o último mês de dados com o período anterior. 
+            Variações indicam mudanças no foco de investimento ou demandas institucionais.
           </p>
         </div>
 
-        <ul className="space-y-3">
-          {alerts.map((a, i) => {
-            const alta = a.tendencia === "alta";
-            return (
-              <li
-                key={a.id}
-                className="animate-in fade-in slide-in-from-bottom-2 duration-500"
-                style={{ animationDelay: `${i * 80}ms`, animationFillMode: "both" }}
-              >
-                <Card className="rounded-2xl border-border/70 shadow-sm transition-shadow hover:shadow-md">
-                  <CardContent className="flex items-center gap-4 p-4">
-                    <MiniBars
-                      anterior={a.valor_anterior}
-                      atual={a.valor_atual}
-                      alta={alta}
-                    />
-                    <div className="min-w-0 flex-1 space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-foreground truncate">
-                          {a.categoria}
-                        </h3>
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                            alta
-                              ? "bg-[oklch(0.95_0.04_25)] text-[oklch(0.45_0.18_25)]"
-                              : "bg-[oklch(0.95_0.05_155)] text-[oklch(0.38_0.13_155)]",
-                          )}
-                        >
-                          {alta ? (
-                            <TrendingUp className="h-3 w-3" />
-                          ) : (
-                            <TrendingDown className="h-3 w-3" />
-                          )}
-                          {a.variacao_percentual}
-                        </span>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+            <p className="font-mono text-[10px] text-muted-foreground uppercase tracking-widest">Auditando Variações...</p>
+          </div>
+        ) : (
+          <ul className="space-y-3">
+            {generatedAlerts.map((a, i) => {
+              if (!a) return null;
+              const alta = a.tendencia === "alta";
+              return (
+                <li
+                  key={a.id}
+                  className="animate-in fade-in slide-in-from-bottom-2 duration-500"
+                  style={{ animationDelay: `${i * 80}ms`, animationFillMode: "both" }}
+                >
+                  <Card className="rounded-2xl border-border/70 shadow-sm transition-shadow hover:shadow-md">
+                    <CardContent className="flex items-center gap-4 p-4">
+                      <MiniBars
+                        anterior={a.valor_anterior}
+                        atual={a.valor_atual}
+                        alta={alta}
+                      />
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-foreground truncate">
+                            {a.categoria}
+                          </h3>
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                              alta
+                                ? "bg-[oklch(0.95_0.04_25)] text-[oklch(0.45_0.18_25)]"
+                                : "bg-[oklch(0.95_0.05_155)] text-[oklch(0.38_0.13_155)]",
+                            )}
+                          >
+                            {alta ? (
+                              <TrendingUp className="h-3 w-3" />
+                            ) : (
+                              <TrendingDown className="h-3 w-3" />
+                            )}
+                            {a.variacao_percentual}
+                          </span>
+                        </div>
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          {a.mensagem}
+                        </p>
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <span>{BRL(a.valor_anterior)}</span>
+                          <span>→</span>
+                          <span className="font-medium text-foreground">
+                            {BRL(a.valor_atual)}
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        {a.mensagem}
-                      </p>
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <span>{BRL(a.valor_anterior)}</span>
-                        <span>→</span>
-                        <span className="font-medium text-foreground">
-                          {BRL(a.valor_atual)}
-                        </span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </li>
+              );
+            })}
+            {generatedAlerts.length === 0 && (
+              <li className="text-center text-sm text-muted-foreground py-20 font-mono uppercase tracking-widest bg-muted/20 rounded-3xl border border-dashed border-border/50">
+                Nenhuma variação atípica detectada no período.
               </li>
-            );
-          })}
-        </ul>
+            )}
+          </ul>
+        )}
 
         <div className="flex items-start gap-2 pt-2 text-[11px] text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />

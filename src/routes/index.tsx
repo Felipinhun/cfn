@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   Cell,
   Pie,
@@ -28,6 +28,8 @@ import {
   Info,
   Cog,
   GraduationCap,
+  Search,
+  ArrowUpDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,10 +46,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { type Transaction } from "@/lib/transactions";
-import { supabase } from "@/lib/supabase";
-import { cn } from "@/lib/utils";
-import { BottomNav } from "@/components/BottomNav";
-import { CommentsSection } from "@/components/CommentsSection";
+import { useRealTransactions } from "@/hooks/useRealTransactions";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -156,150 +155,62 @@ const FILTERS = ["Hoje", "Mensal", "Anual"] as const;
 type Filter = (typeof FILTERS)[number];
 
 function Dashboard() {
+  const { allTransactions, loading } = useRealTransactions();
   const [filter, setFilter] = useState<Filter>("Mensal");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [showRaw, setShowRaw] = useState(false);
-  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof Transaction | "data";
+    direction: "asc" | "desc";
+  }>({ key: "data", direction: "desc" });
 
-  const fetchRealData = async () => {
-    try {
-      setLoading(true);
-      // 1. Buscar Passagens
-      const { data: passagens, error: pError } = await supabase
-        .from("viagens_passagens")
-        .select("*");
-      
-      // 2. Buscar Deslocamentos
-      const { data: deslocamentos, error: dError } = await supabase
-        .from("diarias_deslocamentos")
-        .select("*");
-
-      if (pError) console.error("Erro passagens:", pError);
-      if (dError) console.error("Erro deslocamentos:", dError);
-
-      // 3. Helpers de Parsing
-      const findVal = (obj: Record<string, unknown>, patterns: string[]): unknown => {
-        if (!obj) return null;
-        const keys = Object.keys(obj);
-        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-        
-        for (const p of patterns) {
-          const np = normalize(p);
-          const found = keys.find(k => normalize(k) === np);
-          if (found && obj[found] !== null && obj[found] !== undefined) return obj[found];
-        }
-        
-        for (const p of patterns) {
-          const np = normalize(p);
-          const found = keys.find(k => normalize(k).includes(np));
-          if (found && obj[found] !== null && obj[found] !== undefined) return obj[found];
-        }
-        return null;
-      };
-
-      const parseValue = (obj: Record<string, unknown>, keys: string[]): number => {
-        const _parse = (raw: unknown): number => {
-          if (raw === null || raw === undefined || raw === "") return 0;
-          if (typeof raw === "number") return raw;
-          
-          let clean = String(raw).replace(/[^\d.,-]/g, "").trim();
-          if (!clean) return 0;
-
-          // Se tem ponto E vírgula, assume formato Brasil 1.234,56
-          if (clean.includes(",") && clean.includes(".")) {
-            return parseFloat(clean.replace(/\./g, "").replace(",", "."));
-          }
-
-          // Se tem apenas vírgula, é o separador decimal (ex: 5770,9600)
-          if (clean.includes(",")) {
-            return parseFloat(clean.replace(",", "."));
-          }
-
-          const parsed = parseFloat(clean);
-          return isNaN(parsed) ? 0 : parsed;
-        };
-
-        for (const k of keys) {
-          const val = findVal(obj, [k]);
-          const num = _parse(val);
-          if (num > 0) return num;
-        }
-        return _parse(findVal(obj, keys));
-      };
-
-      const parseCargo = (obj: Record<string, unknown>, keys: string[]): string => {
-        const val = findVal(obj, keys);
-        if (!val) return "Colaborador";
-        const s = String(val).trim();
-        if (/^[\d,.-]+$/.test(s) || s.length < 2) return "Colaborador";
-        return s;
-      };
-
-      const parseDate = (obj: Record<string, unknown>, keys: string[]): string => {
-        const raw = findVal(obj, keys);
-        if (!raw) return new Date().toISOString();
-        const str = String(raw);
-        if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str;
-        const match = str.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-        if (match) return `${match[3]}-${match[2]}-${match[1]}`;
-        return new Date(str).toISOString();
-      };
-
-      // 4. Mapeamento
-      const mappedPassagens: Transaction[] = (passagens || []).map((p: Record<string, unknown>) => {
-        const totalDespesas = parseValue(p, ["ValorTotalDespesas", "ValorTotal", "Valor"]);
-        const tarifas = parseValue(p, ["TotalTarifas", "Tarifa", "Valor"]);
-        return {
-          id: String(findVal(p, ["Id", "IdProcesso", "id_pk", "IdProcessoPassagem"]) || `p-${Math.random()}`),
-          data: parseDate(p, ["DataIdaEVoltaFormatada", "DataHoraIda"]),
-          cargo: parseCargo(p, ["TipoPassageiro", "Cargo", "Ocupacao"]),
-          categoria: `Passagem: ${findVal(p, ["CiaAerea", "Companhia"]) || "Aérea"}`,
-          favorecido: String(findVal(p, ["NomePassageiro", "Nome"]) || "Anônimo"),
-          valor: totalDespesas || tarifas || 0,
-          descricao: String(findVal(p, ["NomeEventoFormatado", "Descricao"]) || "Viagem institucional"),
-          origem: String(findVal(p, ["CodigoProcesso", "Num_Processo"]) || "Processo N/A"),
-          ciaAerea: String(findVal(p, ["CiaAerea", "Companhia"]) || ""),
-          totalTarifas: tarifas,
-          origemDestino: String(findVal(p, ["OrigemDestinoFormatado", "Rota"]) || ""),
-          valorTotalDespesas: totalDespesas,
-          raw: p
-        };
-      });
-
-      const mappedDeslocamentos: Transaction[] = (deslocamentos || []).map((d: Record<string, unknown>) => {
-        const totalDespesas = parseValue(d, ["ValorTotalDespesas", "ValorTotal", "Valor"]);
-        const diarias = parseValue(d, ["Diaria", "vl_diaria", "Valor"]);
-        return {
-          id: String(findVal(d, ["Id", "id", "id_pk"]) || `d-${Math.random()}`),
-          data: parseDate(d, ["DataHoraIda", "Data"]),
-          cargo: parseCargo(d, ["TipoPassageiro", "Cargo", "Vinculo"]),
-          categoria: "Deslocamento / Diária",
-          favorecido: String(findVal(d, ["NomePassageiro", "Nome"]) || "Anônimo"),
-          valor: totalDespesas || diarias || 0,
-          descricao: String(findVal(d, ["NomeDespesaPadrao", "Motivo", "Descricao"]) || "Despesas de deslocamento"),
-          origem: String(findVal(d, ["NomeEventoFormatado", "Evento"]) || "Evento N/A"),
-          valorTotalDespesas: totalDespesas || diarias,
-          raw: d
-        };
-      });
-
-      const combined = [...mappedPassagens, ...mappedDeslocamentos].sort(
-        (a, b) => new Date(b.data).getTime() - new Date(a.data).getTime()
-      );
-
-      setAllTransactions(combined);
-    } catch (error) {
-      console.error("Falha ao carregar dados do dashboard:", error);
-    } finally {
-      setLoading(false);
-    }
+  const handleSort = (key: keyof Transaction | "data") => {
+    setSortConfig((prev) => ({
+      key,
+      direction:
+        prev.key === key && prev.direction === "desc" ? "asc" : "desc",
+    }));
   };
 
-  useEffect(() => {
-    fetchRealData();
-  }, []);
+  const filteredAndSortedTransactions = useMemo(() => {
+    let result = allTransactions.filter((t) => {
+      const search = searchTerm.toLowerCase();
+      return (
+        t.favorecido.toLowerCase().includes(search) ||
+        t.descricao.toLowerCase().includes(search) ||
+        t.categoria.toLowerCase().includes(search) ||
+        t.cargo.toLowerCase().includes(search) ||
+        t.origem.toLowerCase().includes(search)
+      );
+    });
+
+    result = [...result].sort((a, b) => {
+      const aVal = a[sortConfig.key as keyof Transaction];
+      const bVal = b[sortConfig.key as keyof Transaction];
+
+      if (sortConfig.key === "data") {
+        return sortConfig.direction === "asc"
+          ? new Date(a.data).getTime() - new Date(b.data).getTime()
+          : new Date(b.data).getTime() - new Date(a.data).getTime();
+      }
+
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return sortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
+      }
+
+      if (typeof aVal === "string" && typeof bVal === "string") {
+        return sortConfig.direction === "asc"
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      }
+
+      return 0;
+    });
+
+    return result;
+  }, [allTransactions, searchTerm, sortConfig]);
 
   const total = useMemo(() => allTransactions.reduce((s, t) => s + t.valor, 0), [allTransactions]);
   const totalDiarias = useMemo(() => 
@@ -738,59 +649,86 @@ function Dashboard() {
         {/* TRANSACTIONS EXTRACT RE-DESIGNED */}
         <section className="grid gap-6">
            <Card className="rounded-[2.5rem] border-border/40 bg-card/60 shadow-2xl backdrop-blur-md overflow-hidden">
-              <CardHeader className="p-8 border-b border-border/20">
+              <CardHeader className="p-8 border-b border-border/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
                  <SectionTitle subtitle="Fluxo de Caixa Auditado">Livro de Movimentações</SectionTitle>
+                 
+                 <div className="relative w-full md:w-80 group">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                    <input 
+                      type="text"
+                      placeholder="Buscar por nome, cargo ou descrição..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full rounded-2xl border border-border/40 bg-background/40 py-2 pl-10 pr-4 text-xs font-mono transition-all focus:border-primary/50 focus:bg-background/60 focus:outline-none"
+                    />
+                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                 <div className="overflow-x-auto">
+                 <div className="overflow-x-auto custom-scrollbar">
                    <table className="w-full text-left">
                      <thead>
                        <tr className="border-b border-border/10 bg-muted/30 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                         <th className="px-8 py-4">Data</th>
-                         <th className="px-4 py-4">Favorecido / Descrição</th>
-                         <th className="px-4 py-4">Categoria</th>
-                         <th className="px-8 py-4 text-right">Valor</th>
+                         <th className="px-8 py-4 cursor-pointer hover:text-primary transition-colors" onClick={() => handleSort("data")}>
+                           <div className="flex items-center gap-2">Data <ArrowUpDown className="h-3 w-3" /></div>
+                         </th>
+                         <th className="px-4 py-4 cursor-pointer hover:text-primary transition-colors" onClick={() => handleSort("favorecido")}>
+                           <div className="flex items-center gap-2">Favorecido / Descrição <ArrowUpDown className="h-3 w-3" /></div>
+                         </th>
+                         <th className="px-4 py-4 cursor-pointer hover:text-primary transition-colors" onClick={() => handleSort("categoria")}>
+                           <div className="flex items-center gap-2">Categoria <ArrowUpDown className="h-3 w-3" /></div>
+                         </th>
+                         <th className="px-8 py-4 text-right cursor-pointer hover:text-primary transition-colors" onClick={() => handleSort("valor")}>
+                           <div className="flex items-center gap-2 justify-end">Valor <ArrowUpDown className="h-3 w-3" /></div>
+                         </th>
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-border/10">
-                       {allTransactions.map((t) => {
-                         const Icon = CATEGORY_ICONS[t.categoria] ?? Wallet;
-                         return (
-                           <motion.tr
-                             initial={{ opacity: 0 }}
-                             whileInView={{ opacity: 1 }}
-                             key={t.id}
-                             onClick={() => setSelectedTx(t)}
-                             className="group cursor-pointer hover:bg-primary/[0.04] transition-colors"
-                           >
-                             <td className="px-8 py-5 font-mono text-[10px] text-muted-foreground">
-                               {new Date(t.data).toLocaleDateString("pt-BR")}
-                             </td>
-                             <td className="px-4 py-5">
-                               <div className="flex items-center gap-4">
-                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/5 text-accent ring-1 ring-accent/10 transition-transform group-hover:scale-110">
-                                    <Icon className="h-5 w-5" />
+                       {filteredAndSortedTransactions.length > 0 ? (
+                         filteredAndSortedTransactions.map((t) => {
+                           const Icon = CATEGORY_ICONS[t.categoria] ?? Wallet;
+                           return (
+                             <motion.tr
+                               initial={{ opacity: 0 }}
+                               whileInView={{ opacity: 1 }}
+                               key={t.id}
+                               onClick={() => setSelectedTx(t)}
+                               className="group cursor-pointer hover:bg-primary/[0.04] transition-colors"
+                             >
+                               <td className="px-8 py-5 font-mono text-[10px] text-muted-foreground">
+                                 {new Date(t.data).toLocaleDateString("pt-BR")}
+                               </td>
+                               <td className="px-4 py-5">
+                                 <div className="flex items-center gap-4">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/5 text-accent ring-1 ring-accent/10 transition-transform group-hover:scale-110">
+                                      <Icon className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                      <div className="font-display text-sm font-bold text-foreground group-hover:text-primary transition-colors">{t.favorecido}</div>
+                                      <div className="font-mono text-[9px] text-muted-foreground uppercase">{t.descricao}</div>
+                                    </div>
+                                 </div>
+                               </td>
+                               <td className="px-4 py-5">
+                                  <div className="space-y-1">
+                                     <span className="inline-flex items-center rounded-full bg-border/20 px-3 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-foreground/70">
+                                       {t.categoria}
+                                     </span>
+                                     <div className="font-mono text-[9px] text-muted-foreground/60 uppercase pl-1">{t.cargo}</div>
                                   </div>
-                                  <div>
-                                    <div className="font-display text-sm font-bold text-foreground group-hover:text-primary transition-colors">{t.favorecido}</div>
-                                    <div className="font-mono text-[9px] text-muted-foreground uppercase">{t.descricao}</div>
-                                  </div>
-                               </div>
-                             </td>
-                             <td className="px-4 py-5">
-                                <div className="space-y-1">
-                                   <span className="inline-flex items-center rounded-full bg-border/20 px-3 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-foreground/70">
-                                     {t.categoria}
-                                   </span>
-                                   <div className="font-mono text-[9px] text-muted-foreground/60 uppercase pl-1">{t.cargo}</div>
-                                </div>
-                             </td>
-                             <td className="px-8 py-5 text-right font-display text-base font-black text-primary">
-                               {BRL(t.valor)}
-                             </td>
-                           </motion.tr>
-                         );
-                       })}
+                               </td>
+                               <td className="px-8 py-5 text-right font-display text-base font-black text-primary">
+                                 {BRL(t.valor)}
+                               </td>
+                             </motion.tr>
+                           );
+                         })
+                       ) : (
+                         <tr>
+                           <td colSpan={4} className="px-8 py-20 text-center text-muted-foreground font-mono text-xs uppercase tracking-widest">
+                             Nenhuma movimentação encontrada para esta busca.
+                           </td>
+                         </tr>
+                       )}
                      </tbody>
                    </table>
                  </div>

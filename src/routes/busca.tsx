@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Search, StickyNote, FileText } from "lucide-react";
+import { Search, StickyNote, FileText, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { transactions } from "@/lib/transactions";
+import { useRealTransactions } from "@/hooks/useRealTransactions";
 import { BottomNav } from "@/components/BottomNav";
 
 export const Route = createFileRoute("/busca")({
@@ -24,15 +24,17 @@ const BRL = (v: number) =>
 
 function SearchPage() {
   const [q, setQ] = useState("");
+  const { allTransactions, loading } = useRealTransactions();
+
   const results = useMemo(() => {
     const term = q.trim().toLowerCase();
-    if (!term) return transactions;
-    return transactions.filter((t) =>
-      [t.favorecido, t.categoria, t.cargo, t.descricao].some((f) =>
+    if (!term) return allTransactions;
+    return allTransactions.filter((t) =>
+      [t.favorecido, t.categoria, t.cargo, t.descricao, t.origem].some((f) =>
         f.toLowerCase().includes(term),
       ),
     );
-  }, [q]);
+  }, [q, allTransactions]);
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-28 animate-in fade-in duration-300">
@@ -63,40 +65,50 @@ function SearchPage() {
           />
         </div>
 
-        <ul className="space-y-2">
-          {results.map((t) => (
-            <li key={t.id}>
-              <Card className="rounded-2xl border-border/70 shadow-sm">
-                <CardContent className="flex gap-3 p-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-medium text-foreground truncate">
-                        {t.favorecido}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+            <p className="font-mono text-[10px] text-muted-foreground uppercase tracking-widest">Sincronizando Base de Dados...</p>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {results.map((t) => (
+              <li key={t.id}>
+                <Card className="rounded-2xl border-border/70 shadow-sm transition-all hover:bg-accent/5">
+                  <CardContent className="flex gap-3 p-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/20 text-accent ring-1 ring-accent/30">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-medium text-foreground truncate">
+                          {t.favorecido}
+                        </div>
+                        <div className="font-semibold whitespace-nowrap text-primary">
+                          {BRL(t.valor)}
+                        </div>
                       </div>
-                      <div className="font-semibold whitespace-nowrap">
-                        {BRL(t.valor)}
+                      <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-tighter">
+                        {t.categoria} · {t.cargo}
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        {t.descricao}
+                      </p>
+                      <div className="mt-2 font-mono text-[9px] text-muted-foreground/60 uppercase">
+                        Origem: {t.origem} · {new Date(t.data).toLocaleDateString("pt-BR")}
                       </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {t.categoria} · {t.cargo}
-                    </div>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      {t.descricao}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </li>
-          ))}
-          {results.length === 0 && (
-            <li className="text-center text-sm text-muted-foreground py-8">
-              Nenhum resultado encontrado.
-            </li>
-          )}
-        </ul>
+                  </CardContent>
+                </Card>
+              </li>
+            ))}
+            {results.length === 0 && (
+              <li className="text-center text-sm text-muted-foreground py-8 font-mono uppercase tracking-widest">
+                Nenhum resultado encontrado para "{q}".
+              </li>
+            )}
+          </ul>
+        )}
       </main>
 
       <BottomNav />
