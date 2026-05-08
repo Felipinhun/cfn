@@ -28,6 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { transactions, type Transaction } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
+import { BottomNav } from "@/components/BottomNav";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -145,7 +146,7 @@ function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground pb-28 animate-in fade-in duration-300">
       <header className="border-b border-border bg-card/60 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-5 md:px-8">
           <div className="flex items-center gap-3">
@@ -388,6 +389,7 @@ function Dashboard() {
           </p>
         </div>
       </footer>
+      <BottomNav />
     </div>
   );
 }
